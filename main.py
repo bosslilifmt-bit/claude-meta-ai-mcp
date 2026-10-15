@@ -1,23 +1,50 @@
-"""
-Claude -> Meta AI Auto Poster MCP Server
-สำหรับเพจ ID: 61595100133102
-"""
-from mcp.server.fastmcp import FastMCP
-import json
-import uuid
-from datetime import datetime
+import os
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
-mcp = FastMCP("Meta AI Auto Poster - Page 61595100133102")
+# สร้าง FastAPI แทน MCP แบบเก่า เพื่อให้ Render รันได้
+app = FastAPI(title="Claude Meta AI MCP - Page 61595100133102")
 
 JOBS_DB = {}
 
-@mcp.tool()
-def create_video_job(prompt: str, style: str = "realistic", aspect_ratio: str = "16:9", caption: str = "") -> dict:
-    """
-    สั่ง Meta AI สร้างวิดีโอสำหรับโพสต์ลงเพจ
-    """
+@app.get("/")
+def home():
+    return {
+        "status": "live",
+        "service": "Claude Meta AI Auto Poster",
+        "page_id": "61595100133102",
+        "message": "MCP Server is running! Use /tools to see available tools",
+        "tools": ["create_video_job", "check_video_status", "approve_and_post"]
+    }
+
+@app.get("/tools")
+def get_tools():
+    return {
+        "tools": [
+            {
+                "name": "create_video_job",
+                "description": "สั่ง Meta AI สร้างวิดีโอสำหรับโพสต์ลงเพจ",
+                "params": ["prompt", "style", "aspect_ratio", "caption"]
+            },
+            {
+                "name": "check_video_status",
+                "description": "เช็คสถานะวิดีโอ",
+                "params": ["job_id"]
+            },
+            {
+                "name": "approve_and_post_to_facebook",
+                "description": "อนุมัติและโพสต์ลง Facebook Page",
+                "params": ["job_id", "final_caption", "page_id"]
+            }
+        ]
+    }
+
+@app.post("/create_video_job")
+def create_video_job(prompt: str, style: str = "realistic", aspect_ratio: str = "16:9", caption: str = ""):
+    import uuid
+    from datetime import datetime
     job_id = str(uuid.uuid4())[:8]
-    job = {
+    JOBS_DB[job_id] = {
         "job_id": job_id,
         "prompt": prompt,
         "style": style,
@@ -25,40 +52,19 @@ def create_video_job(prompt: str, style: str = "realistic", aspect_ratio: str = 
         "caption": caption or prompt,
         "status": "queued",
         "created_at": datetime.now().isoformat(),
-        "page_id": "61595100133102",
+        "page_id": "61595100133102"
     }
-    JOBS_DB[job_id] = job
-    return {
-        "job_id": job_id,
-        "status": "queued",
-        "message": f"รับงานแล้ว! กำลังสร้างวิดีโอ: '{prompt}'",
-    }
+    return {"job_id": job_id, "status": "queued", "message": f"รับงานแล้ว: {prompt}"}
 
-@mcp.tool()
-def check_video_status(job_id: str) -> dict:
-    """เช็คสถานะวิดีโอ"""
+@app.get("/check/{job_id}")
+def check_video_status(job_id: str):
     job = JOBS_DB.get(job_id)
     if not job:
-        return {"error": f"ไม่พบงาน {job_id}"}
-    return {
-        "job_id": job_id,
-        "status": job["status"],
-        "prompt": job["prompt"],
-    }
+        return JSONResponse(status_code=404, content={"error": f"ไม่พบงาน {job_id}"})
+    return job
 
-@mcp.tool()
-def approve_and_post_to_facebook(job_id: str, final_caption: str = "", page_id: str = "61595100133102") -> dict:
-    """อนุมัติและโพสต์ลง Facebook Page"""
-    job = JOBS_DB.get(job_id)
-    if not job:
-        return {"error": f"ไม่พบงาน {job_id}"}
-    job["status"] = "posted"
-    return {
-        "success": True,
-        "job_id": job_id,
-        "page_id": page_id,
-        "message": f"โพสต์ลงเพจ {page_id} สำเร็จ!",
-    }
-
+# ให้ Render รันได้
 if __name__ == "__main__":
-    mcp.run(transport="sse", host="0.0.0.0", port=8000)
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
